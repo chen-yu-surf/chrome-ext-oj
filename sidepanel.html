@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI编程助手</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <!-- KaTeX CSS（公式字体样式） -->
+  <link rel="stylesheet" href="lib/katex.min.css">
+</head>
+<body>
+  <!-- 顶部区域 -->
+  <div class="panel-header">
+    <div class="header-title">🤖 AI编程助手</div>
+    <div class="header-problem" id="problemTitle">等待加载题目...</div>
+  </div>
+
+  <!-- 中间对话区域 -->
+  <div class="chat-container" id="chatContainer">
+    <div class="welcome-msg">
+      <p>👋 欢迎使用AI编程助手</p>
+      <p>面板会自动获取当前题目内容，你可以直接提问。</p>
+    </div>
+  </div>
+
+  <!-- 调试日志区域 -->
+  <div class="debug-panel" id="debugPanel" style="display:none;">
+    <div class="debug-header">
+      <span>调试日志</span>
+      <button id="btnCloseDebug" class="btn-icon">✕</button>
+    </div>
+    <div class="debug-content" id="debugContent"></div>
+  </div>
+
+  <!-- 底部输入区域 -->
+  <div class="input-area">
+    <div class="input-toolbar">
+      <button id="btnClear" class="btn-tool" title="清空对话">🗑️ 清空</button>
+      <button id="btnDebug" class="btn-tool" title="调试日志">🐛 日志</button>
+      <button id="btnRefresh" class="btn-tool" title="重新获取题目">🔄 刷新</button>
+    </div>
+    <div class="input-row">
+      <textarea id="userInput" placeholder="输入你的问题..." rows="2"></textarea>
+      <button id="btnSend" class="btn-send">发送</button>
+    </div>
+  </div>
+
+  <!-- KaTeX 离线渲染库（不需要eval，MV3兼容） -->
+  <script src="lib/katex.min.js"></script>
+  <!-- marked.js Markdown渲染库 -->
+  <script src="lib/marked.min.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
