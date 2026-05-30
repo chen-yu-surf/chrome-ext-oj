@@ -21,6 +21,7 @@
   const btnClear = document.getElementById('btnClear');
   const btnDebug = document.getElementById('btnDebug');
   const btnRefresh = document.getElementById('btnRefresh');
+  const btnSummarize = document.getElementById('btnSummarize');
   const problemTitle = document.getElementById('problemTitle');
   const debugPanel = document.getElementById('debugPanel');
   const debugContent = document.getElementById('debugContent');
@@ -82,6 +83,7 @@
       debugPanel.style.display = 'none';
     });
     btnRefresh.addEventListener('click', fetchProblemData);
+    btnSummarize.addEventListener('click', handleSummarize);
     // 监听流式消息
     chrome.runtime.onMessage.addListener(handleStreamMessage);
 
@@ -279,6 +281,15 @@
       if (currentStreamContent) {
         conversationHistory.push({ role: 'assistant', content: currentStreamContent });
       }
+      // 如果是总结请求，自动下载 Markdown 文件
+      if (currentRequestId && currentRequestId.startsWith('req_summary_')) {
+        const filename = (problemData && problemData.problemId)
+          ? problemData.problemId + '.md'
+          : 'summary.md';
+        downloadMarkdownFile(currentStreamContent, filename);
+        debugLog('总结报告已下载: ' + filename);
+        appendMessage('system', '✅ 总结报告已保存为 **' + filename + '**');
+      }
       finishStream();
     }
 
@@ -297,6 +308,8 @@
     currentStreamEl = null;
     btnSend.disabled = false;
     btnSend.textContent = '发送';
+    btnSummarize.disabled = false;
+    btnSummarize.textContent = '📝 帮我总结';
   }
 
   // ======================= KaTeX 公式渲染工具 =======================
@@ -455,6 +468,114 @@
       conversationHistory = [{ role: 'system', content: mentorPrompt }];
     }
     debugLog('对话已清空');
+  }
+
+  // ======================= 总结对话 =======================
+  async function handleSummarize() {
+    if (isStreaming) {
+      debugLog('正在等待AI回复，请稍候', 'warn');
+      appendMessage('system', '⚠️ 请等待当前回复完成后再总结');
+      return;
+    }
+
+    if (!problemData || !problemData.problemId) {
+      debugLog('没有题目数据，无法生成总结', 'warn');
+      appendMessage('system', '⚠️ 请先打开题目页面获取题目数据');
+      return;
+    }
+
+    // 检查是否有实质性的用户对话
+    const hasUserMessages = conversationHistory.some(m => m.role === 'user');
+    if (!hasUserMessages) {
+      debugLog('对话为空，无法生成总结', 'warn');
+      appendMessage('system', '⚠️ 当前没有对话内容，请先和助手交流后再总结');
+      return;
+    }
+
+    const config = await getConfig();
+    if (!config.llmApiUrl || !config.llmApiKey || !config.llmModel) {
+      debugLog('请先在Popup中配置LLM API信息', 'error');
+      appendMessage('system', '⚠️ 请先点击插件图标配置 LLM API 信息');
+      return;
+    }
+
+    debugLog('开始生成总结报告...');
+
+    // 隐藏的用户消息：触发LLM总结
+    const summarizePrompt = `请根据以上整个对话内容，帮我做一份总结报告。重点包括：
+1. 题目的核心考点和难度
+2. 我在分析和调试代码过程中的思路演变——包括最初的思路、走过的弯路、以及最终如何找到正确方向
+3. 调试过程中遇到的 bug 以及如何定位和修复
+4. 学到的关键技巧和经验教训
+
+请用 Markdown 格式输出，参考以下结构：
+# [题目名称] 总结报告
+## 题目信息
+- 题目编号/来源
+- 难度级别
+- 核心考点
+## 解题过程
+### 初始思路
+### 思维链
+### 最终解法
+## 调试记录
+（遇到的 bug、如何定位、如何修复）
+## 经验总结
+- 本题学到的核心技巧
+- 易踩的陷阱与避坑方法
+
+注意：只基于对话中实际讨论过的内容，不要凭空编造。`;
+
+    conversationHistory.push({ role: 'user', content: summarizePrompt });
+
+    // 创建AI消息占位
+    const aiMsgEl = appendMessage('assistant', '');
+    currentStreamEl = aiMsgEl.querySelector('.msg-content');
+    currentStreamContent = '';
+
+    // 发起流式请求
+    isStreaming = true;
+    currentRequestId = 'req_summary_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    btnSend.disabled = true;
+    btnSend.textContent = '⏳';
+    btnSummarize.disabled = true;
+    btnSummarize.textContent = '⏳ 总结中...';
+
+    chrome.runtime.sendMessage({
+      type: 'LLM_STREAM_REQUEST',
+      payload: {
+        apiUrl: config.llmApiUrl,
+        apiKey: config.llmApiKey,
+        model: config.llmModel,
+        messages: conversationHistory,
+        requestId: currentRequestId
+      }
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        debugLog('总结请求失败: ' + chrome.runtime.lastError.message, 'error');
+        currentStreamEl.innerHTML = '<span class="error-text">总结请求失败: ' + escapeHtml(chrome.runtime.lastError.message) + '</span>';
+        finishStream();
+        btnSummarize.disabled = false;
+        btnSummarize.textContent = '📝 帮我总结';
+      }
+    });
+  }
+
+  /**
+   * 通过 Blob + anchor 触发浏览器下载 Markdown 文件。
+   * 不需要 downloads 权限，兼容所有 Chrome 版本。
+   */
+  function downloadMarkdownFile(content, filename) {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // 延迟释放 blob URL，确保下载已开始
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ======================= 工具函数 =======================
